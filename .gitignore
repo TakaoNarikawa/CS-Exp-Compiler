@@ -1,9 +1,11 @@
 __pycache__/*.pyc
 .DS_Store
 **/*.pyc
+pscripts/*
 
 *.ll
 *.pyc
 *.out
 parsetab.py
 memo.md
+test.py
