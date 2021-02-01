@@ -76,7 +76,6 @@ class Factor(object):
         scope = scope if scope is not None else self.scope
         name = name if name is not None else self.name
         val = val if val is not None else self.val
-        print("scope", scope)
         return Factor(scope=scope, name=name, val=val)
 
 

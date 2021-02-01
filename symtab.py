@@ -73,7 +73,6 @@ class Symbol(object):
             self.size == other.size and \
             self.ptr_offset == other.ptr_offset
 
-
 class SymbolTable(object):
     def __init__(self):
         super().__init__()
@@ -119,7 +118,6 @@ class SymbolTable(object):
         else:
             # 更新先の内容がすでに存在する場合は、削除する
             self.symbols.pop(index)
-            
 
     def remove_local_var(self):
         self.symbols = [s for s in self.symbols if s.scope != Scope.LOCAL]

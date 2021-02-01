@@ -157,17 +157,29 @@ def p_subprog_decl(p):
     '''
     subprog_decl : proc_decl
                  | func_decl
+                 | forward_proc_decl
+                 | forward_func_decl
     '''
 
 
 def p_proc_decl(p):
     '''
-    proc_decl : PROCEDURE proc_name closure
+    proc_decl : PROCEDURE proc_name args SEMICOLON closure
     '''
 
 def p_func_decl(p):
     '''
-    func_decl : FUNCTION func_name closure
+    func_decl : FUNCTION func_name args SEMICOLON closure
+    '''
+
+def p_forward_proc_decl(p):
+    '''
+    forward_proc_decl : FORWARD PROCEDURE proc_name args unlink_current_function
+    '''
+
+def p_forward_func_decl(p):
+    '''
+    forward_func_decl : FORWARD FUNCTION func_name args unlink_current_function
     '''
 
 def p_proc_name(p):
@@ -181,13 +193,17 @@ def p_func_name(p):
     '''
     codegen.current_function.is_func = True
 
+def p_args(p):
+    '''
+    args : LPAREN enter_block id_list link_args RPAREN
+         | 
+    '''
+
 
 def p_closure(p):
     '''
-    closure : SEMICOLON enter_block inblock leave_block finalize_function remove_local_var
-            | LPAREN enter_block id_list link_args RPAREN SEMICOLON inblock leave_block finalize_function remove_local_var
+    closure : enter_block inblock leave_block finalize_function remove_local_var
     '''
-
 
 def p_inblock(p):
     '''
@@ -223,8 +239,6 @@ def p_assignment_statement(p):
     '''
     # TODO: 分岐処理入れる
     ident = p[1]
-
-    print("len(p)", len(p))
 
     if len(p) == 4:
         arg1 = codegen.pop_factor()
@@ -507,6 +521,11 @@ def p_link_args(p):
     func = symtab.lookup(codegen.current_function.name, [Scope.FUNC])
     symtab.update_args_cnt(func, cnt=len(args))
 
+def p_unlink_current_function(p):
+    '''
+    unlink_current_function :
+    '''
+    codegen.functions.pop()
 
 def p_remove_local_var(p):
     '''
@@ -520,12 +539,21 @@ def p_proc_call(p):
     '''
 
     factors = codegen.pop_all_factor()
-    func = factors[0]
-    args = factors[1:]
+    found_func = [i for i, f in enumerate(factors) if f.scope == Scope.FUNC]
+    if not len(found_func) > 0:
+        raise RuntimeError("呼び出された関数が見つかりませんでした")
+    func_index = found_func[0]
+
+    # 関係ない部分は戻す
+    for f in factors[:func_index]:
+        codegen.push_factor(f)
+
+    func = factors[func_index]
+    args = factors[func_index + 1:]
+
 
     # 引数に対応した関数があるかチェック
     symtab.lookup(func.name, [Scope.FUNC], args_cnt = len(args))
-    print(symtab.symbols)
 
     retval = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeCallProc(func, args, retval))

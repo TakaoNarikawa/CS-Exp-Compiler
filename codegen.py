@@ -31,6 +31,14 @@ class CodeGenerator(object):
 
     def add_function(self, name: str):
         self.functions.append(Fundecl(name))
+    
+    def move_to_last(self, name: str):
+        found = [i for i, fn in enumerate(self.functions) if fn.name == name]
+        if not len(found) > 0:
+            raise RuntimeError(f'構文エラー: FORWARD 関数なし ... {name}')
+        # 末端に持ってくる
+        fn = self.functions.pop(found[0])
+        self.functions.append(fn)
 
     def pop_factor(self):
         return self.factorstack.pop()
@@ -50,7 +58,6 @@ class CodeGenerator(object):
         self.functions[func_idx].codes.append(code)
 
     def export(self, filename, verbose=False):
-
         if self.write_enabled:
             self.push_code(LLVMCodeWriteFormat(), func_idx=0)
             self.push_code(LLVMCodeDeclarePrintf(), func_idx=0)
