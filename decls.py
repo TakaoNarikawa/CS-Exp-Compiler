@@ -10,10 +10,10 @@ class Fundecl(object):
     def __init__(self, name: Optional[str] = None):
         self.name = name
         self.codes: List[LLVMCode] = []
+        self.args_cnt = 0
         self.cntr = 1 # レジスタカウンター
         self.rettype = "i32"
 
-    @property
     def register(self):
         t = self.cntr
         self.cntr += 1
@@ -25,7 +25,9 @@ class Fundecl(object):
         if as_function:
             statements = [with_indent(s, 2) for s in statements]
 
-        header = f"define {self.rettype} @{self.name}()" + "{\n" \
+        arg_types = ['i32' for i in range(self.args_cnt)]
+
+        header = f"define {self.rettype} @{self.name}({', '.join(arg_types)})" + "{\n" \
             if as_function else ""
         body = '\n'.join(statements)
         footer = "\n}" if as_function else ""
@@ -38,10 +40,10 @@ class Fundecl(object):
 
 
 class Factor(object):
-    def __init__(self, scope: Scope, vname=None, val=None):
+    def __init__(self, scope: Scope, name=None, val=None):
         assert type(scope) is Scope
         self.scope = scope
-        self.name = vname
+        self.name = name
         self.val = val
 
     def __str__(self):
@@ -56,12 +58,18 @@ class Factor(object):
             return f"{self.val}"
         elif self.scope == Scope.FUNC:
             assert self.name is not None
-            return f"@{self.name}()"
+            return f"@{self.name}"
         else:
             raise NotImplementedError()
 
     def __repr__(self) -> str:
         return self.__str__()
+    
+    def replace(self, scope: Scope = None, name=None, val=None):
+        scope = scope if scope is not None else self.scope
+        name = name if name is not None else self.name
+        val = val if val is not None else self.val
+        return Factor(scope=scope, name=name, val=val)
 
 
 def with_indent(s: str, level: int = 0) -> str:

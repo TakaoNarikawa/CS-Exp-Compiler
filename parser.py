@@ -105,7 +105,7 @@ def p_program(p):
 
 def p_outblock(p):
     '''
-    outblock : var_decl_part subprog_decl_part register_main_function statement
+    outblock : var_decl_part subprog_decl_part link_main_function statement
     '''
 
 
@@ -127,8 +127,13 @@ def p_var_decl(p):
     '''
     var_decl : VAR id_list
     '''
-    # print([s.type for s in p.stack], 'BEGIN' in [s.type for s in p.stack])
-
+    for var in codegen.pop_all_factor():
+        if var.scope == Scope.GLOBAL:
+            symtab.insert(var.name, scope=Scope.GLOBAL)
+            codegen.push_code(llvmcodes.LLVMCodeGlobal(var), func_idx=0)
+        if var.scope == Scope.LOCAL:
+            symtab.insert(var.name, scope=Scope.LOCAL, register=var.val)
+            codegen.push_code(llvmcodes.LLVMCodeAlloca(var))
 
 def p_subprog_decl_part(p):
     '''
@@ -152,19 +157,20 @@ def p_subprog_decl(p):
 
 def p_proc_decl(p):
     '''
-    proc_decl : PROCEDURE proc_name SEMICOLON inblock remove_local_var finalize_function
+    proc_decl : PROCEDURE proc_name SEMICOLON enter_block inblock remove_local_var leave_block finalize_function
+              | PROCEDURE proc_name LPAREN enter_block id_list link_args RPAREN SEMICOLON inblock remove_local_var leave_block finalize_function
     '''
 
 
 def p_proc_name(p):
     '''
-    proc_name : IDENT register_proc
+    proc_name : IDENT link_proc
     '''
 
 
 def p_inblock(p):
     '''
-    inblock : enter_block var_decl_part leave_block statement
+    inblock :  var_decl_part statement
     '''
 
 
@@ -233,23 +239,25 @@ def p_for_statement(p):
 def p_proc_call_statement(p):
     '''
     proc_call_statement : proc_call_name
+                        | proc_call_name LPAREN arg_list RPAREN
     '''
+    factors = codegen.pop_all_factor()
+    func = factors[0]
+    args = factors[1:]
+    retval = Factor(Scope.LOCAL, val=codegen.register())
+    codegen.push_code(llvmcodes.LLVMCodeCallProc(func, args, retval))
 
 
 def p_proc_call_name(p):
     '''
-    proc_call_name : IDENT lookup_id
+    proc_call_name : IDENT
     '''
     ident = p[1]
     scope = symtab.lookup(ident).scope
     assert scope == Scope.FUNC
 
-    arg = Factor(scope, vname=ident)
-    retval = Factor(Scope.LOCAL, val=codegen.register)
-
-    codegen.push_code(llvmcodes.LLVMCodeCallProc(arg, retval))
-    
-
+    arg = Factor(scope, name=ident)
+    codegen.push_factor(arg)
 
 def p_block_statement(p):
     '''
@@ -263,16 +271,16 @@ def p_read_statement(p):
     '''
     ident = p[3]
     scope = symtab.lookup(ident).scope
-    val = Factor(scope, vname=ident)
+    val = Factor(scope, name=ident)
 
     # read_value_addr: i32* read で読み取った内容を持つアメモリ番地
-    read_value_addr = Factor(Scope.LOCAL, val=codegen.register)
+    read_value_addr = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeAlloca(read_value_addr))
-    retval = Factor(Scope.LOCAL, val=codegen.register)
+    retval = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeRead(read_value_addr, retval))
 
     # read_value_addr -> read_value
-    read_value = Factor(Scope.LOCAL, val=codegen.register)
+    read_value = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeLoad(read_value, read_value_addr))
 
     codegen.push_code(llvmcodes.LLVMCodeStore(read_value, val))
@@ -284,7 +292,7 @@ def p_write_statement(p):
     '''
 
     arg = codegen.pop_factor()
-    retval = Factor(Scope.LOCAL, val=codegen.register)
+    retval = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeWrite(arg, retval))
     codegen.enable_write()
 
@@ -306,7 +314,7 @@ def p_condition(p):
     '''
     arg2 = codegen.pop_factor()
     arg1 = codegen.pop_factor()
-    retval = Factor(Scope.LOCAL, val=codegen.register)
+    retval = Factor(Scope.LOCAL, val=codegen.register())
     ope = llvmcodes.CmpType.from_str(p[2])
 
     codegen.push_code(llvmcodes.LLVMCodeIcmp(ope, arg1, arg2, retval))
@@ -332,7 +340,7 @@ def p_expression(p):
         arg2 = codegen.pop_factor()
         arg1 = codegen.pop_factor()
 
-    retval = Factor(Scope.LOCAL, val=codegen.register)
+    retval = Factor(Scope.LOCAL, val=codegen.register())
 
     operator = p[2]
     assert operator == '+' or operator == '-'
@@ -357,7 +365,7 @@ def p_term(p):
 
     arg2 = codegen.pop_factor()
     arg1 = codegen.pop_factor()
-    retval = Factor(Scope.LOCAL, val=codegen.register)
+    retval = Factor(Scope.LOCAL, val=codegen.register())
 
     LLVMCodeClass = llvmcodes.LLVMCodeMul \
         if p[2] == '*' else llvmcodes.LLVMCodeDiv
@@ -381,7 +389,7 @@ def p_factor(p):
         codegen.push_factor(val)
     else:
         var = codegen.pop_factor()
-        retval = Factor(Scope.LOCAL, val=codegen.register)
+        retval = Factor(Scope.LOCAL, val=codegen.register())
         l = llvmcodes.LLVMCodeLoad(retval, var)
         codegen.push_code(l)
         codegen.push_factor(retval)
@@ -403,11 +411,10 @@ def p_arg_list(p):
              | arg_list COMMA expression
     '''
 
-
 def p_id_list(p):
     '''
-    id_list : IDENT register_id
-            | id_list COMMA IDENT register_id
+    id_list : IDENT link_id
+            | id_list COMMA IDENT link_id
     '''
 
 #################################################################
@@ -415,19 +422,13 @@ def p_id_list(p):
 #################################################################
 
 
-def p_register_proc(p):
+def p_link_proc(p):
     '''
-    register_proc :
+    link_proc :
     '''
     symtab.insert(latest_id_name(p), 'proc')
     codegen.add_function(latest_id_name(p))
 
-
-def p_enter_block(p):
-    '''
-    enter_block :
-    '''
-    symtab.increase_depth()
 
 
 def p_lookup_id(p):
@@ -436,6 +437,11 @@ def p_lookup_id(p):
     '''
     symtab.lookup(latest_id_name(p))
 
+def p_enter_block(p):
+    '''
+    enter_block :
+    '''
+    symtab.increase_depth()
 
 def p_leave_block(p):
     '''
@@ -443,10 +449,9 @@ def p_leave_block(p):
     '''
     symtab.decrease_depth()
 
-
-def p_register_id(p):
+def p_link_id(p):
     '''
-    register_id :
+    link_id :
     '''
     ident = latest_id_name(p)
     scope = symtab.scope()
@@ -454,15 +459,26 @@ def p_register_id(p):
     assert scope == Scope.GLOBAL or scope == Scope.LOCAL
 
     if scope == Scope.GLOBAL:
-        val = Factor(scope, vname=ident)
-        codegen.push_code(llvmcodes.LLVMCodeGlobal(val), func_idx=0)
-        symtab.insert(ident, scope=Scope.GLOBAL)
+        val = Factor(scope, name=ident)
 
     if scope == Scope.LOCAL:
-        register_number = codegen.register
-        val = Factor(scope, val=register_number)
-        codegen.push_code(llvmcodes.LLVMCodeAlloca(val))
-        symtab.insert(ident, register=register_number, scope=Scope.LOCAL)
+        val = Factor(scope, name=ident, val=codegen.register())
+
+    codegen.push_factor(val)
+
+def p_link_args(p):
+    '''
+    link_args :
+    '''
+    args = codegen.pop_all_factor()
+    codegen.current_function.args_cnt = len(args)
+    
+    for arg in args:
+        arg_var = Factor(scope=Scope.LOCAL, val=codegen.register())
+        symtab.insert(arg.name, scope=Scope.LOCAL, register=arg_var.val)
+        codegen.push_code(llvmcodes.LLVMCodeAlloca(arg_var))
+        codegen.push_code(llvmcodes.LLVMCodeStore(arg.replace(val=arg.val-1), arg_var))
+
 
 def p_remove_local_var(p):
     '''
@@ -475,16 +491,16 @@ def p_remove_local_var(p):
 #################################################################
 
 
-def p_register_main_function(p):
+def p_link_main_function(p):
     '''
-    register_main_function :
+    link_main_function :
     '''
     codegen.add_function("main")
 
 
-def p_register_function(p):
+def p_link_function(p):
     '''
-    register_function :
+    link_function :
     '''
     codegen.add_function(latest_id_name(p))
 
@@ -539,7 +555,6 @@ def p_if_condition(p):
     '''
     if_condition :
     '''
-
     # 条件分岐の行き先を決定
     cond = codegen.pop_factor()
     l1 = Factor(Scope.LOCAL, val="if.true")
@@ -601,18 +616,18 @@ def p_for_init(p):
 
     # n++ 
     ## n をレジスタに読み込み
-    reg_ident = Factor(Scope.LOCAL, val=codegen.register)
+    reg_ident = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeLoad(reg_ident, var))
     ## n + 1
     one = Factor(Scope.CONSTANT, val=1)
-    reg_ident_increased = Factor(Scope.LOCAL, val=codegen.register)
+    reg_ident_increased = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeAdd(reg_ident, one, reg_ident_increased))
     ## レジスタの内容を n に戻す
     codegen.push_code(llvmcodes.LLVMCodeStore(reg_ident_increased, var))
 
     # n が range_from に到達したかのチェック
     ## n < range_to
-    cond = Factor(Scope.LOCAL, val=codegen.register)
+    cond = Factor(Scope.LOCAL, val=codegen.register())
     codegen.push_code(llvmcodes.LLVMCodeIcmp(llvmcodes.CmpType.SLT, reg_ident_increased, range_to, cond))
 
     l_end = Factor(Scope.LOCAL, val="for.end")
@@ -650,7 +665,7 @@ def parse_variable(v):
     scope = symbol.scope
 
     if scope == Scope.GLOBAL:
-        return Factor(scope, vname=v)
+        return Factor(scope, name=v)
     if scope == Scope.LOCAL:
         return Factor(scope, val=symbol.register)
     
@@ -673,4 +688,11 @@ if __name__ == "__main__":
     # ファイルを開いて
     data = open(sys.argv[1]).read()
     # 解析を実行
-    yacc.parse(data, lexer=lexer)
+    
+    try:
+        yacc.parse(data, lexer=lexer)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print("\n\n--- log --- \n\n")
+        codegen.export("error.ll", verbose=True)

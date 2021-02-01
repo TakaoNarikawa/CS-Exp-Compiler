@@ -17,15 +17,19 @@ class CodeGenerator(object):
     def current_function(self):
         return self.functions[-1]
 
-    @property
     def register(self):
-        return self.current_function.register
+        return self.current_function.register()
 
     def add_function(self, name: str):
         self.functions.append(Fundecl(name))
 
     def pop_factor(self):
         return self.factorstack.pop()
+
+    def pop_all_factor(self):
+        factors = self.factorstack[:]
+        self.factorstack = []
+        return factors
 
     def push_factor(self, factor: Factor):
         self.factorstack.append(factor)

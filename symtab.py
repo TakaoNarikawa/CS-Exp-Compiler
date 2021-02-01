@@ -87,9 +87,7 @@ class SymbolTable(object):
     def lookup(self, token: str) -> Symbol:
         found = [r for r in self.symbols if r.name == token]
         if not len(found) > 0:
-            print('構文エラー: トークンなし')
-            print([r for r in self.symbols])
-            exit()
+            raise RuntimeError(f'構文エラー: トークンなし ... {token}')
 
         print(f'{colored("検索", "green")}: {found[-1]}')
         return found[-1]

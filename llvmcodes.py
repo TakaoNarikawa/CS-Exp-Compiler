@@ -261,10 +261,12 @@ class LLVMCodeDeclareScanf(LLVMCode):
         return 'declare dso_local i32 @__isoc99_scanf(i8*, ...) #1'
 
 class LLVMCodeCallProc(LLVMCode):
-    def __init__(self, arg, retval):
+    def __init__(self, func, args, retval):
         super().__init__()
-        self.arg = arg
+        self.func = func
+        self.args = args
         self.retval = retval
 
     def __str__(self) -> str:
-        return f'{self.retval} = call i32 {self.arg}'
+        args = ', '.join([f"i32 {arg}" for arg in self.args])
+        return f'{self.retval} = call i32 {self.func}({args})'
