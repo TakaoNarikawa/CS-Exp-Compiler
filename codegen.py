@@ -28,11 +28,14 @@ class CodeGenerator(object):
 
     def pop_all_factor(self):
         factors = self.factorstack[:]
-        self.factorstack = []
+        self.clear_factorstack()
         return factors
 
     def push_factor(self, factor: Factor):
         self.factorstack.append(factor)
+    
+    def clear_factorstack(self):
+        self.factorstack = []
 
     def push_code(self, code: LLVMCode, func_idx=-1):
         self.functions[func_idx].codes.append(code)
@@ -58,5 +61,6 @@ class CodeGenerator(object):
 
     def enable_write(self):
         self.write_enabled = True
+
     def enable_read(self):
         self.read_enabled = True

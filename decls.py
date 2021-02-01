@@ -13,6 +13,7 @@ class Fundecl(object):
         self.args_cnt = 0
         self.cntr = 1 # レジスタカウンター
         self.rettype = "i32"
+        self.is_func = False
 
     def register(self):
         t = self.cntr

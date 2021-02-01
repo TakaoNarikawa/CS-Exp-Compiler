@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 ENABLE_COLOR = True
 
@@ -50,17 +50,25 @@ class Scope(Enum):
 
 
 class Symbol(object):
-    def __init__(self, name: str, scope: Scope, register: int = None):
+    def __init__(self, name: str, scope: Scope, register: int = None, args_cnt: int = 0):
         super().__init__()
         self.name = name
         self.register = register
         self.scope = scope
+        self.args_cnt = args_cnt
 
     def __str__(self) -> str:
-        return f'<"{self.name}"|{self.register}|{self.scope}>'
+        name_suffix = f"({self.args_cnt})" if self.scope == Scope.FUNC else ""
+        return f'<"{self.name}{name_suffix}"|{self.register}|{self.scope}>'
 
     def __repr__(self) -> str:
         return self.__str__()
+
+    def __eq__(self, other) -> bool:
+        return self.name == other.name and \
+            self.register == other.register and \
+            self.scope == other.scope and \
+            self.args_cnt == other.args_cnt
 
 
 class SymbolTable(object):
@@ -84,13 +92,31 @@ class SymbolTable(object):
 
         print(f'{colored("追加", "yellow")}: {symbol},\t現在のシンボルの数: {len(self.symbols)}')
 
-    def lookup(self, token: str) -> Symbol:
-        found = [r for r in self.symbols if r.name == token]
+    def lookup(self, token: str, scope_condition: Optional[List[Scope]] = None, args_cnt: int = None) -> Symbol:
+        found = [
+            r for r in self.symbols
+            if r.name == token and (args_cnt is None or r.args_cnt == args_cnt) and \
+                (scope_condition is None or r.scope in scope_condition)
+        ]
         if not len(found) > 0:
             raise RuntimeError(f'構文エラー: トークンなし ... {token}')
 
         print(f'{colored("検索", "green")}: {found[-1]}')
         return found[-1]
+
+    def update_args_cnt(self, symbol, cnt):
+        found = [i for i, s in enumerate(self.symbols) if s == symbol]
+        if not len(found) > 0:
+            raise RuntimeError("シンボルが見つかりませんでした。")
+        index = found[0]
+
+        new_symbol = Symbol(name=symbol.name, scope=symbol.scope, register=symbol.register, args_cnt=cnt)
+        if new_symbol not in self.symbols:
+            self.symbols[index].args_cnt = cnt
+        else:
+            # 更新先の内容がすでに存在する場合は、削除する
+            self.symbols.pop(index)
+            
 
     def remove_local_var(self):
         self.symbols = [s for s in self.symbols if s.scope != Scope.LOCAL]

@@ -209,8 +209,10 @@ class LLVMCodeDiv(LLVMCodeOperator):
 
 
 class LLVMCodeProcReturn(LLVMCode):
+    def __init__(self, arg = 0):
+        self.arg = arg
     def __str__(self) -> str:
-        return "ret i32 0"
+        return f"ret i32 {self.arg}"
 
 class LLVMCodeRegisterLabel(LLVMCode):
     def __init__(self, label):

@@ -114,6 +114,10 @@ def p_var_decl_part(p):
     var_decl_part : var_decl_list SEMICOLON
                   |
     '''
+    if codegen.current_function.is_func:
+        var = Factor(Scope.LOCAL, name=codegen.current_function.name, val=codegen.register())
+        symtab.insert(var.name, scope=Scope.LOCAL, register=var.val)
+        codegen.push_code(llvmcodes.LLVMCodeAlloca(var))
 
 
 def p_var_decl_list(p):
@@ -152,19 +156,36 @@ def p_subprog_decl_list(p):
 def p_subprog_decl(p):
     '''
     subprog_decl : proc_decl
+                 | func_decl
     '''
 
 
 def p_proc_decl(p):
     '''
-    proc_decl : PROCEDURE proc_name SEMICOLON enter_block inblock remove_local_var leave_block finalize_function
-              | PROCEDURE proc_name LPAREN enter_block id_list link_args RPAREN SEMICOLON inblock remove_local_var leave_block finalize_function
+    proc_decl : PROCEDURE proc_name closure
     '''
 
+def p_func_decl(p):
+    '''
+    func_decl : FUNCTION func_name closure
+    '''
 
 def p_proc_name(p):
     '''
     proc_name : IDENT link_proc
+    '''
+
+def p_func_name(p):
+    '''
+    func_name : IDENT link_proc
+    '''
+    codegen.current_function.is_func = True
+
+
+def p_closure(p):
+    '''
+    closure : SEMICOLON enter_block inblock leave_block finalize_function remove_local_var
+            | LPAREN enter_block id_list link_args RPAREN SEMICOLON inblock leave_block finalize_function remove_local_var
     '''
 
 
@@ -179,7 +200,7 @@ def p_statement_list(p):
     statement_list : statement_list SEMICOLON statement
                    | statement
     '''
-
+    codegen.clear_factorstack()
 
 def p_statement(p):
     '''
@@ -193,7 +214,6 @@ def p_statement(p):
               | read_statement
               | write_statement
     '''
-    # print([s.type for s in p.stack])
 
 
 def p_assignment_statement(p):
@@ -238,23 +258,16 @@ def p_for_statement(p):
 
 def p_proc_call_statement(p):
     '''
-    proc_call_statement : proc_call_name
-                        | proc_call_name LPAREN arg_list RPAREN
+    proc_call_statement : proc_call_name proc_call
+                        | proc_call_name LPAREN arg_list RPAREN proc_call
     '''
-    factors = codegen.pop_all_factor()
-    func = factors[0]
-    args = factors[1:]
-    retval = Factor(Scope.LOCAL, val=codegen.register())
-    codegen.push_code(llvmcodes.LLVMCodeCallProc(func, args, retval))
-
 
 def p_proc_call_name(p):
     '''
     proc_call_name : IDENT
     '''
     ident = p[1]
-    scope = symtab.lookup(ident).scope
-    assert scope == Scope.FUNC
+    scope = symtab.lookup(ident, [Scope.FUNC]).scope
 
     arg = Factor(scope, name=ident)
     codegen.push_factor(arg)
@@ -378,6 +391,7 @@ def p_term(p):
 def p_factor(p):
     '''
     factor : var_name
+           | proc_call_name LPAREN arg_list RPAREN proc_call
            | NUMBER
            | LPAREN expression RPAREN
     '''
@@ -404,7 +418,6 @@ def p_var_name(p):
     codegen.push_factor(var)
 
 
-
 def p_arg_list(p):
     '''
     arg_list : expression
@@ -428,7 +441,6 @@ def p_link_proc(p):
     '''
     symtab.insert(latest_id_name(p), 'proc')
     codegen.add_function(latest_id_name(p))
-
 
 
 def p_lookup_id(p):
@@ -477,7 +489,11 @@ def p_link_args(p):
         arg_var = Factor(scope=Scope.LOCAL, val=codegen.register())
         symtab.insert(arg.name, scope=Scope.LOCAL, register=arg_var.val)
         codegen.push_code(llvmcodes.LLVMCodeAlloca(arg_var))
-        codegen.push_code(llvmcodes.LLVMCodeStore(arg.replace(val=arg.val-1), arg_var))
+        codegen.push_code(llvmcodes.LLVMCodeStore(arg.replace(val=arg.val - 1), arg_var))
+        
+    # 記号表の関数の引数の数を更新する
+    func = symtab.lookup(codegen.current_function.name, [Scope.FUNC])
+    symtab.update_args_cnt(func, cnt=len(args))
 
 
 def p_remove_local_var(p):
@@ -485,6 +501,23 @@ def p_remove_local_var(p):
     remove_local_var :
     '''
     symtab.remove_local_var()
+
+def p_proc_call(p):
+    '''
+    proc_call :
+    '''
+
+    factors = codegen.pop_all_factor()
+    func = factors[0]
+    args = factors[1:]
+
+    # 引数に対応した関数があるかチェック
+    symtab.lookup(func.name, [Scope.FUNC], args_cnt = len(args))
+    print(symtab.symbols)
+
+    retval = Factor(Scope.LOCAL, val=codegen.register())
+    codegen.push_code(llvmcodes.LLVMCodeCallProc(func, args, retval))
+    codegen.push_factor(retval)
 
 #################################################################
 # NOTE: コード生成用
@@ -497,19 +530,17 @@ def p_link_main_function(p):
     '''
     codegen.add_function("main")
 
-
-def p_link_function(p):
-    '''
-    link_function :
-    '''
-    codegen.add_function(latest_id_name(p))
-
-
 def p_finalize_function(p):
     '''
     finalize_function :
     '''
-    codegen.push_code(llvmcodes.LLVMCodeProcReturn())
+    if not codegen.current_function.is_func:
+        codegen.push_code(llvmcodes.LLVMCodeProcReturn())
+    else:
+        var = parse_variable(codegen.current_function.name)
+        retval = Factor(Scope.LOCAL, val=codegen.register())
+        codegen.push_code(llvmcodes.LLVMCodeLoad(retval, var))
+        codegen.push_code(llvmcodes.LLVMCodeProcReturn(retval))
 
 # NOTE: WHILE
 
