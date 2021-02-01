@@ -17,9 +17,8 @@ class CodeGenerator(object):
     def current_function(self):
         return self.functions[-1]
 
-    @property
     def register(self):
-        return self.current_function.register
+        return self.current_function.register()
 
     def add_function(self, name: str):
         self.functions.append(Fundecl(name))

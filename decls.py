@@ -13,7 +13,6 @@ class Fundecl(object):
         self.cntr = 1 # レジスタカウンター
         self.rettype = "i32"
 
-    @property
     def register(self):
         t = self.cntr
         self.cntr += 1
@@ -38,10 +37,10 @@ class Fundecl(object):
 
 
 class Factor(object):
-    def __init__(self, scope: Scope, vname=None, val=None):
+    def __init__(self, scope: Scope, name=None, val=None):
         assert type(scope) is Scope
         self.scope = scope
-        self.name = vname
+        self.name = name
         self.val = val
 
     def __str__(self):
