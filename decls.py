@@ -181,8 +181,6 @@ class Dependence(object):
         self.deps = [dep for dep in deps if dep is not None]
 
     def to_register(self, factor):
-        if factor is None:
-            return None
         if not isinstance(factor, Factor):
             return None
         if factor.scope == Scope.LOCAL:
