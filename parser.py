@@ -158,7 +158,7 @@ def p_proc_decl(p):
 
 def p_proc_name(p):
     '''
-    proc_name : IDENT register_proc
+    proc_name : IDENT link_proc
     '''
 
 
@@ -415,9 +415,9 @@ def p_id_list(p):
 #################################################################
 
 
-def p_register_proc(p):
+def p_link_proc(p):
     '''
-    register_proc :
+    link_proc :
     '''
     symtab.insert(latest_id_name(p), 'proc')
     codegen.add_function(latest_id_name(p))
@@ -482,9 +482,9 @@ def p_link_main_function(p):
     codegen.add_function("main")
 
 
-def p_register_function(p):
+def p_link_function(p):
     '''
-    register_function :
+    link_function :
     '''
     codegen.add_function(latest_id_name(p))
 
