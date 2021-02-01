@@ -127,8 +127,6 @@ def p_var_decl(p):
     '''
     var_decl : VAR id_list
     '''
-    # print([s.type for s in p.stack], 'BEGIN' in [s.type for s in p.stack])
-
 
 def p_subprog_decl_part(p):
     '''
