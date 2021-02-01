@@ -1,23 +1,20 @@
-# -*- coding: utf-8 -*-
+from decls import Fundecl, Factor
+from llvmcodes import LLVMCode, LLVMCodeWriteFormat, LLVMCodeReadFormat, LLVMCodeDeclarePrintf, LLVMCodeDeclareScanf
 from typing import List
-
-from decls import Factor, Fundecl
-from llvmcodes import (LLVMCode, LLVMCodeDeclarePrintf, LLVMCodeDeclareScanf,
-                       LLVMCodeReadFormat, LLVMCodeWriteFormat)
 
 
 class CodeGenerator(object):
     def __init__(self, optimization) -> None:
         super().__init__()
         # グローバル変数を定義するための Fundecl を用意
-        self.functions:   List[Fundecl] = [Fundecl()]
-        self.factorstack: List[Factor]  = []
-        self.lbl_stack:   List[int]     = []
+        self.functions: List[Fundecl] = [Fundecl()]
+        self.factorstack: List[Factor] = []
 
         self.write_enabled = False
-        self.read_enabled  = False
+        self.read_enabled = False
 
-        self.lbl_cnt      = 0
+        self.lbl_cnt = 0
+        self.lbl_stack: List[int] = []
         self.optimization = optimization
 
     @property
@@ -63,13 +60,14 @@ class CodeGenerator(object):
 
     def export(self, filename, verbose=False):
         if self.write_enabled:
-            self.push_code(LLVMCodeWriteFormat(),   func_idx=0)
+            self.push_code(LLVMCodeWriteFormat(), func_idx=0)
             self.push_code(LLVMCodeDeclarePrintf(), func_idx=0)
+        
         if self.read_enabled:
-            self.push_code(LLVMCodeReadFormat(),    func_idx=0)
-            self.push_code(LLVMCodeDeclareScanf(),  func_idx=0)
+            self.push_code(LLVMCodeReadFormat(), func_idx=0)
+            self.push_code(LLVMCodeDeclareScanf(), func_idx=0)
 
-        blocks  = [f.to_string() for f in self.functions]
+        blocks = [f.to_string() for f in self.functions]
         content = '\n'.join(blocks)
 
         with open(filename, mode='w', encoding='utf-8') as f:
