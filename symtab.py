@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-
 from enum import Enum
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 ENABLE_COLOR = True
-
 
 def colored(s: str, color: str):
     if not ENABLE_COLOR:
@@ -50,14 +48,16 @@ class Scope(Enum):
 
 
 class Symbol(object):
-    def __init__(self, name: str, scope: Scope, register: int = None, args_cnt: int = 0, size: int = 0, ptr_offset: int = 0):
+    def __init__(self, name: str, scope: Scope, register: int = None,
+                 args_cnt: int = 0, size: int = 0, ptr_offset: int = 0):
         super().__init__()
-        self.name = name
-        self.register = register
-        self.scope = scope
-        self.args_cnt = args_cnt
-        self.size = size
+        self.name       = name
+        self.register   = register
+        self.scope      = scope
+        self.args_cnt   = args_cnt
+        self.size       = size
         self.ptr_offset = ptr_offset
+
     def __str__(self) -> str:
         name_suffix = f"({self.args_cnt})" if self.scope == Scope.FUNC else ""
         return f'<"{self.name}{name_suffix}"|{self.register}|{self.scope}>'
@@ -66,12 +66,12 @@ class Symbol(object):
         return self.__str__()
 
     def __eq__(self, other) -> bool:
-        return self.name == other.name and \
-            self.register == other.register and \
-            self.scope == other.scope and \
-            self.args_cnt == other.args_cnt and \
-            self.size == other.size and \
-            self.ptr_offset == other.ptr_offset
+        return self.name       == other.name     and \
+               self.register   == other.register and \
+               self.scope      == other.scope    and \
+               self.args_cnt   == other.args_cnt and \
+               self.size       == other.size     and \
+               self.ptr_offset == other.ptr_offset
 
 class SymbolTable(object):
     def __init__(self):
@@ -79,7 +79,8 @@ class SymbolTable(object):
         self.symbols = []
         self.local_depth = 0
 
-    def insert(self, token: str, scope: Optional[Union[Scope, str]] = None, register: int = None, size: int = 0, ptr_offset: int = 0):
+    def insert(self, token: str, scope: Optional[Union[Scope, str]] = None,
+               register: int = None, size: int = 0, ptr_offset: int = 0):
         scope = scope or self.scope()
         if type(scope) is str:
             scope = Scope.from_str(scope)
@@ -89,17 +90,16 @@ class SymbolTable(object):
             symbol = Symbol(token, scope=scope, register=register, size=size, ptr_offset=ptr_offset)
         else:
             symbol = Symbol(token, scope=scope, size=size, ptr_offset=ptr_offset)
-
         self.symbols.append(symbol)
-
         print(f'{colored("追加", "yellow")}: {symbol},\t現在のシンボルの数: {len(self.symbols)}')
 
     def lookup(self, token: str, scope_condition: Optional[List[Scope]] = None, args_cnt: int = None) -> Symbol:
         found = [
             r for r in self.symbols
-            if r.name == token and (args_cnt is None or r.args_cnt == args_cnt) and \
-                (scope_condition is None or r.scope in scope_condition)
-        ]
+            if r.name == token and \
+               (args_cnt        is None or r.args_cnt == args_cnt) and \
+               (scope_condition is None or r.scope in scope_condition)]
+
         if not len(found) > 0:
             raise RuntimeError(f'構文エラー: トークンなし ... {token}')
 
@@ -133,6 +133,5 @@ class SymbolTable(object):
 
     def decrease_depth(self):
         if not self.local_depth > 0:
-            print('構文エラー: 階層が誤っています')
-            exit()
+            raise RuntimeError("構文エラー: 階層が誤っています")
         self.local_depth -= 1
