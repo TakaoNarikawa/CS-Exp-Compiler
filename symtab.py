@@ -50,13 +50,14 @@ class Scope(Enum):
 
 
 class Symbol(object):
-    def __init__(self, name: str, scope: Scope, register: int = None, args_cnt: int = 0):
+    def __init__(self, name: str, scope: Scope, register: int = None, args_cnt: int = 0, size: int = 0, ptr_offset: int = 0):
         super().__init__()
         self.name = name
         self.register = register
         self.scope = scope
         self.args_cnt = args_cnt
-
+        self.size = size
+        self.ptr_offset = ptr_offset
     def __str__(self) -> str:
         name_suffix = f"({self.args_cnt})" if self.scope == Scope.FUNC else ""
         return f'<"{self.name}{name_suffix}"|{self.register}|{self.scope}>'
@@ -68,7 +69,9 @@ class Symbol(object):
         return self.name == other.name and \
             self.register == other.register and \
             self.scope == other.scope and \
-            self.args_cnt == other.args_cnt
+            self.args_cnt == other.args_cnt and \
+            self.size == other.size and \
+            self.ptr_offset == other.ptr_offset
 
 
 class SymbolTable(object):
@@ -77,16 +80,16 @@ class SymbolTable(object):
         self.symbols = []
         self.local_depth = 0
 
-    def insert(self, token: str, scope: Optional[Union[Scope, str]] = None, register: int = None):
+    def insert(self, token: str, scope: Optional[Union[Scope, str]] = None, register: int = None, size: int = 0, ptr_offset: int = 0):
         scope = scope or self.scope()
         if type(scope) is str:
             scope = Scope.from_str(scope)
 
         if scope == Scope.LOCAL:
             assert register is not None
-            symbol = Symbol(token, scope=scope, register=register)
+            symbol = Symbol(token, scope=scope, register=register, size=size, ptr_offset=ptr_offset)
         else:
-            symbol = Symbol(token, scope=scope)
+            symbol = Symbol(token, scope=scope, size=size, ptr_offset=ptr_offset)
 
         self.symbols.append(symbol)
 

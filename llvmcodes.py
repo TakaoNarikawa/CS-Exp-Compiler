@@ -65,7 +65,7 @@ class LLVMCodeAlloca(LLVMCode):
         self.retval = retval
 
     def __str__(self) -> str:
-        return f"{self.retval} = alloca i32, align 4"
+        return f"{self.retval} = alloca {self.retval.vartype}, align {16 if self.retval.size > 0 else 4}"
 
 
 class LLVMCodeGlobal(LLVMCode):
@@ -79,7 +79,10 @@ class LLVMCodeGlobal(LLVMCode):
         self.retval = retval
 
     def __str__(self) -> str:
-        return f"{self.retval} = common global i32 0, align 4"
+        if self.retval.size > 0:
+            return f"{self.retval} = common dso_local global [{self.retval.size} x i32] zeroinitializer, align 16"
+        else:
+            return f"{self.retval} = common global i32 0, align 4"
 
 
 class LLVMCodeStore(LLVMCode):
@@ -272,3 +275,14 @@ class LLVMCodeCallProc(LLVMCode):
     def __str__(self) -> str:
         args = ', '.join([f"i32 {arg}" for arg in self.args])
         return f'{self.retval} = call i32 {self.func}({args})'
+
+class LLVMCodeGetPointer(LLVMCode):
+    def __init__(self, arg1, arg2, index, size):
+        super().__init__()
+        self.arg1 = arg1
+        self.arg2 = arg2
+        self.index = index
+        self.size = size
+
+    def __str__(self) -> str:
+        return f'{self.arg1} = getelementptr inbounds [{self.size} x i32], [{self.size} x i32]* {self.arg2}, i32 0, i32 {self.index}'

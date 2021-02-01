@@ -133,10 +133,10 @@ def p_var_decl(p):
     '''
     for var in codegen.pop_all_factor():
         if var.scope == Scope.GLOBAL:
-            symtab.insert(var.name, scope=Scope.GLOBAL)
+            symtab.insert(var.name, scope=Scope.GLOBAL, size=var.size, ptr_offset=var.ptr_offset)
             codegen.push_code(llvmcodes.LLVMCodeGlobal(var), func_idx=0)
         if var.scope == Scope.LOCAL:
-            symtab.insert(var.name, scope=Scope.LOCAL, register=var.val)
+            symtab.insert(var.name, scope=Scope.LOCAL, register=var.val, size=var.size, ptr_offset=var.ptr_offset)
             codegen.push_code(llvmcodes.LLVMCodeAlloca(var))
 
 def p_subprog_decl_part(p):
@@ -218,12 +218,21 @@ def p_statement(p):
 
 def p_assignment_statement(p):
     '''
-    assignment_statement : IDENT ASSIGN expression lookup_id
+    assignment_statement : IDENT ASSIGN expression
+                         | IDENT LBRACKET expression RBRACKET ASSIGN expression
     '''
+    # TODO: 分岐処理入れる
     ident = p[1]
 
-    arg1 = codegen.pop_factor()
-    arg2 = parse_variable(ident)
+    print("len(p)", len(p))
+
+    if len(p) == 4:
+        arg1 = codegen.pop_factor()
+        arg2 = parse_variable(ident)
+    else:
+        arg1 = codegen.pop_factor()
+        index = codegen.pop_factor()
+        arg2 = parse_variable(ident, index)
 
     codegen.push_code(llvmcodes.LLVMCodeStore(arg1, arg2))
 
@@ -232,8 +241,6 @@ def p_if_statement(p):
     '''
     if_statement : IF condition if_condition THEN statement if_else else_statement if_end
     '''
-
-
 
 
 def p_else_statement(p):
@@ -252,7 +259,7 @@ def p_while_statement(p):
 
 def p_for_statement(p):
     '''
-    for_statement : FOR IDENT lookup_id ASSIGN expression TO expression for_init DO statement for_end
+    for_statement : FOR IDENT ASSIGN expression TO expression for_init DO statement for_end
     '''
 
 
@@ -267,9 +274,9 @@ def p_proc_call_name(p):
     proc_call_name : IDENT
     '''
     ident = p[1]
-    scope = symtab.lookup(ident, [Scope.FUNC]).scope
+    symbol = symtab.lookup(ident, [Scope.FUNC])
 
-    arg = Factor(scope, name=ident)
+    arg = Factor(symbol.scope, name=ident)
     codegen.push_factor(arg)
 
 def p_block_statement(p):
@@ -280,11 +287,9 @@ def p_block_statement(p):
 
 def p_read_statement(p):
     '''
-    read_statement : READ LPAREN IDENT lookup_id RPAREN
+    read_statement : READ LPAREN var_name RPAREN
     '''
-    ident = p[3]
-    scope = symtab.lookup(ident).scope
-    val = Factor(scope, name=ident)
+    val = codegen.pop_factor()
 
     # read_value_addr: i32* read で読み取った内容を持つアメモリ番地
     read_value_addr = Factor(Scope.LOCAL, val=codegen.register())
@@ -411,11 +416,16 @@ def p_factor(p):
 
 def p_var_name(p):
     '''
-    var_name : IDENT lookup_id
+    var_name : IDENT
+             | IDENT LBRACKET expression RBRACKET
     '''
     ident = p[1]
-    var = parse_variable(ident)
-    codegen.push_factor(var)
+
+    if len(p) > 2:
+        index = codegen.pop_factor()
+        codegen.push_factor(parse_variable(ident, index))
+    else:
+        codegen.push_factor(parse_variable(ident))
 
 
 def p_arg_list(p):
@@ -442,13 +452,6 @@ def p_link_proc(p):
     symtab.insert(latest_id_name(p), 'proc')
     codegen.add_function(latest_id_name(p))
 
-
-def p_lookup_id(p):
-    '''
-    lookup_id :
-    '''
-    symtab.lookup(latest_id_name(p))
-
 def p_enter_block(p):
     '''
     enter_block :
@@ -464,17 +467,26 @@ def p_leave_block(p):
 def p_link_id(p):
     '''
     link_id :
-    '''
+            | LBRACKET NUMBER INTERVAL NUMBER RBRACKET
+    '''    
     ident = latest_id_name(p)
     scope = symtab.scope()
+    size = 0
+    ptr_offset = 0
+
+    if len(p) == 6:
+        i_from = p[2]
+        i_to = p[4]
+        size = i_to - i_from + 1
+        ptr_offset = i_from
 
     assert scope == Scope.GLOBAL or scope == Scope.LOCAL
 
     if scope == Scope.GLOBAL:
-        val = Factor(scope, name=ident)
+        val = Factor(scope, name=ident, size=size, ptr_offset=ptr_offset)
 
     if scope == Scope.LOCAL:
-        val = Factor(scope, name=ident, val=codegen.register())
+        val = Factor(scope, name=ident, val=codegen.register(), size=size, ptr_offset=ptr_offset)
 
     codegen.push_factor(val)
 
@@ -548,37 +560,38 @@ def p_while_init(p):
     '''
     while_init :
     '''
-    l_init = Factor(Scope.LOCAL, val="while.init")
+    label_index = codegen.label_index()
+    l_init = Factor(Scope.LOCAL, val=f"while.init.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l_init))
     # 行き先 while.init を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("while.init"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"while.init.{label_index}"))
 
 def p_while_condition(p):
     '''
     while_condition :
     '''
-
+    label_index = codegen.pop_label_stack(keep=True)
     # 条件分岐の行き先を決定
     cond = codegen.pop_factor()
-    l1 = Factor(Scope.LOCAL, val="while.body")
-    l2 = Factor(Scope.LOCAL, val="while.end")
+    l1 = Factor(Scope.LOCAL, val=f"while.body.{label_index}")
+    l2 = Factor(Scope.LOCAL, val=f"while.end.{label_index}")
 
     codegen.push_code(llvmcodes.LLVMCodeBrCond(cond, l1, l2))
 
     # 行き先 while.body ( statement の部分 ) を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("while.body"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"while.body.{label_index}"))
 
 def p_while_end(p):
     '''
     while_end :
     '''
-
+    label_index = codegen.pop_label_stack()
     # while.init に戻る
-    l1 = Factor(Scope.LOCAL, val="while.init")
+    l1 = Factor(Scope.LOCAL, val=f"while.init.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l1))
 
     # 行き先 while.end を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("while.end"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"while.end.{label_index}"))
 
 # NOTE: IF - ELSE
 
@@ -586,37 +599,38 @@ def p_if_condition(p):
     '''
     if_condition :
     '''
+    label_index = codegen.label_index()
     # 条件分岐の行き先を決定
     cond = codegen.pop_factor()
-    l1 = Factor(Scope.LOCAL, val="if.true")
-    l2 = Factor(Scope.LOCAL, val="if.else")
-
+    l1 = Factor(Scope.LOCAL, val=f"if.true.{label_index}")
+    l2 = Factor(Scope.LOCAL, val=f"if.else.{label_index}")
+    
     codegen.push_code(llvmcodes.LLVMCodeBrCond(cond, l1, l2))
 
     # 行き先 if.true を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("if.true"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"if.true.{label_index}"))
 
 def p_if_else(p):
     '''
     if_else :
     '''
-
-    l1 = Factor(Scope.LOCAL, val="if.end")
+    label_index = codegen.pop_label_stack(keep=True)
+    l1 = Factor(Scope.LOCAL, val=f"if.end.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l1))
 
     # 行き先 if.else を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("if.else"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"if.else.{label_index}"))
 
 def p_if_end(p):
     '''
     if_end :
     '''
-
-    l1 = Factor(Scope.LOCAL, val="if.end")
+    label_index = codegen.pop_label_stack()
+    l1 = Factor(Scope.LOCAL, val=f"if.end.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l1))
 
     # 行き先 if.end を作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("if.end"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"if.end.{label_index}"))
 
 # NOTE: FOR 
 
@@ -635,15 +649,17 @@ def p_for_init(p):
     range_from = codegen.pop_factor()
     var = parse_variable(ident)
 
+    label_index = codegen.label_index()
+
     # n := 2
     codegen.push_code(llvmcodes.LLVMCodeStore(range_from, var))
     
     # 初期化時は無条件で statement に移動
-    l_body = Factor(Scope.LOCAL, val="for.body")
+    l_body = Factor(Scope.LOCAL, val=f"for.body.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l_body))
 
     # statement が終わったあとに戻ってくる for.condition のポイントを作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("for.condition"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"for.condition.{label_index}"))
 
     # n++ 
     ## n をレジスタに読み込み
@@ -657,26 +673,27 @@ def p_for_init(p):
     codegen.push_code(llvmcodes.LLVMCodeStore(reg_ident_increased, var))
 
     # n が range_from に到達したかのチェック
-    ## n < range_to
+    ## n <= range_to
     cond = Factor(Scope.LOCAL, val=codegen.register())
-    codegen.push_code(llvmcodes.LLVMCodeIcmp(llvmcodes.CmpType.SLT, reg_ident_increased, range_to, cond))
+    codegen.push_code(llvmcodes.LLVMCodeIcmp(llvmcodes.CmpType.SLE, reg_ident_increased, range_to, cond))
 
-    l_end = Factor(Scope.LOCAL, val="for.end")
+    l_end = Factor(Scope.LOCAL, val=f"for.end.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrCond(cond, l_body, l_end))
 
     # for.body の作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("for.body"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"for.body.{label_index}"))
 
 def p_for_end(p):
     '''
     for_end :
     '''
+    label_index = codegen.pop_label_stack()
     # statement 終了後は強制的に for.condition に戻して n < range_to を評価する
-    l_cond = Factor(Scope.LOCAL, val="for.condition")
+    l_cond = Factor(Scope.LOCAL, val=f"for.condition.{label_index}")
     codegen.push_code(llvmcodes.LLVMCodeBrUncond(l_cond))
 
     # for.end の作成
-    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel("for.end"))
+    codegen.push_code(llvmcodes.LLVMCodeRegisterLabel(f"for.end.{label_index}"))
 
 
 #################################################################
@@ -691,16 +708,28 @@ def latest_id_name(p):
         exit()
     return ids[-1].value
 
-def parse_variable(v):
+def _parse_variable(v):
     symbol = symtab.lookup(v)
     scope = symbol.scope
 
     if scope == Scope.GLOBAL:
-        return Factor(scope, name=v)
+        return Factor(scope, name=v, size=symbol.size, ptr_offset=symbol.ptr_offset)
     if scope == Scope.LOCAL:
-        return Factor(scope, val=symbol.register)
+        return Factor(scope, val=symbol.register, size=symbol.size, ptr_offset=symbol.ptr_offset)
     
     raise ValueError()
+
+def parse_variable(v, index=None):
+    var = _parse_variable(v)
+    if index is not None:
+        symbol = symtab.lookup(v)
+        index_var = Factor(Scope.LOCAL, val=codegen.register())
+        retval = Factor(Scope.LOCAL, val=codegen.register())
+        codegen.push_code(llvmcodes.LLVMCodeSub(index, Factor(Scope.CONSTANT, val=symbol.ptr_offset), index_var))
+        codegen.push_code(llvmcodes.LLVMCodeGetPointer(retval, var, index_var, symbol.size))
+        return retval
+    else:
+        return var
 
 
 #################################################################

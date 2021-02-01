@@ -13,12 +13,21 @@ class CodeGenerator(object):
         self.write_enabled = False
         self.read_enabled = False
 
+        self.lbl_cnt = 0
+        self.lbl_stack: List[int] = []
+
     @property
     def current_function(self):
         return self.functions[-1]
 
     def register(self):
         return self.current_function.register()
+
+    def label_index(self):
+        t = self.lbl_cnt
+        self.lbl_cnt += 1
+        self.lbl_stack.append(t)
+        return t
 
     def add_function(self, name: str):
         self.functions.append(Fundecl(name))
@@ -64,3 +73,8 @@ class CodeGenerator(object):
 
     def enable_read(self):
         self.read_enabled = True
+
+    def pop_label_stack(self, keep=False):
+        if keep:
+            return self.lbl_stack[-1]
+        return self.lbl_stack.pop()

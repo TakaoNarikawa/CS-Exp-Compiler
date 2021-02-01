@@ -41,18 +41,20 @@ class Fundecl(object):
 
 
 class Factor(object):
-    def __init__(self, scope: Scope, name=None, val=None):
+    def __init__(self, scope: Scope, name=None, val=None, size=0, ptr_offset=0):
         assert type(scope) is Scope
         self.scope = scope
         self.name = name
         self.val = val
+        self.size = size
+        self.ptr_offset = ptr_offset
 
     def __str__(self):
         if self.scope == Scope.GLOBAL:
             assert self.name is not None
             return f"@{self.name}"
         elif self.scope == Scope.LOCAL:
-            assert self.val is not None
+            assert self.val is not None, (self.scope, self.name, self.val, self.size, self.ptr_offset)
             return f"%{self.val}"
         elif self.scope == Scope.CONSTANT:
             assert self.val is not None
@@ -65,11 +67,16 @@ class Factor(object):
 
     def __repr__(self) -> str:
         return self.__str__()
+
+    @property
+    def vartype(self):
+        return "i32" if self.size == 0 else f"[{self.size} x i32]"
     
     def replace(self, scope: Scope = None, name=None, val=None):
         scope = scope if scope is not None else self.scope
         name = name if name is not None else self.name
         val = val if val is not None else self.val
+        print("scope", scope)
         return Factor(scope=scope, name=name, val=val)
 
 
