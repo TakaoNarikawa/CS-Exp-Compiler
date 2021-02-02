@@ -11,8 +11,8 @@ from codegen import CodeGenerator
 import llvmcodes
 
 optimization = {
-    "constant_folding": False,
-    "remove_deadcode": False
+    "constant_folding": True,
+    "remove_deadcode": True
 }
 
 symtab = SymbolTable()

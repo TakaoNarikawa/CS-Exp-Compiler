@@ -125,6 +125,7 @@ class Fundecl(object):
                 self.replace_register_dict[r] = r
             else:
                 self.replace_register_dict[r] = i + 1
+                
         print("self.replace_register_dict", self.replace_register_dict)
 
     def add_code(self, code: LLVMCode):
