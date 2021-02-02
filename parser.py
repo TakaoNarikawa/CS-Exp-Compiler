@@ -11,7 +11,7 @@ from symtab import Scope, SymbolTable
 
 optimization = {
     "constant_folding": False,
-    "remove_deadcode": True
+    "remove_deadcode": False
 }
 
 symtab = SymbolTable()
