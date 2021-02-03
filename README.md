@@ -1,5 +1,7 @@
 # コンパイラ作成課題 ソースコード
 
+![](https://github.com/TakaoNarikawa/CS-Exp-Compiler/blob/master/screenshot.png?raw=true)
+
 ## 始め方
 
 ply をインストール
